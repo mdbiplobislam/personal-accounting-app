@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build (placeholder public config; no secrets are needed to compile)
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key-for-build-only
+
+  database:
+    name: Migrations, seed and SQL accounting/RLS tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Build the schema from migrations, seed it and run the SQL tests
+        run: npm run test:db
+      - name: Ensure migration files are never edited in place
+        run: |
+          # Applied migrations are immutable. New changes must be new files.
+          # This check fails if an existing migration file is modified in this PR.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if ! git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"; then
+              echo "Base branch not found on origin (first pull request in this repository). Skipping."
+              exit 0
+            fi
+            changed=$(git diff --name-status "origin/${{ github.base_ref }}"...HEAD -- supabase/migrations | awk '$1 ~ /^[MDR]/ {print $2}')
+            if [ -n "$changed" ]; then
+              echo "Existing migrations were modified or removed:"
+              echo "$changed"
+              exit 1
+            fi
+          fi
+
+  security:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-secrets.sh

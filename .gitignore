@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment files: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Supabase local state (the CLI regenerates it)
+supabase/.branches/
+supabase/.temp/
+
+# Editors and OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
