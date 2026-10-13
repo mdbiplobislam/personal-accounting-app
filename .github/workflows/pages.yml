@@ -17,6 +17,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Same environment as the deploy job, so environment-scoped secrets are visible here too.
+    environment:
+      name: github-pages
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,10 +33,17 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
           # Without these the published site would only show a configuration error.
-          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
-            echo "::error::Add repository secrets VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (Settings > Secrets and variables > Actions) before publishing."
-            exit 1
+          # Report which value is missing. Never print the values themselves.
+          missing=0
+          if [ -z "$VITE_SUPABASE_URL" ]; then
+            echo "::error::VITE_SUPABASE_URL is empty. Add it under Settings > Secrets and variables > Actions > Secrets."
+            missing=1
           fi
+          if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY is empty. Add it under Settings > Secrets and variables > Actions > Secrets."
+            missing=1
+          fi
+          exit $missing
       - name: Build for the Pages sub-path
         env:
           PAGES_BASE: /${{ github.event.repository.name }}/
